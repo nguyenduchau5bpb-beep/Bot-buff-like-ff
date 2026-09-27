@@ -1,15 +1,25 @@
 import os
 import requests
 import telebot
+from telebot.types import BotCommand
 
 # Lấy Token từ biến môi trường Render
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# UID Admin có quyền dùng vô hạn
-ADMIN_ID = "8474356606"
+# 1. CÀI ĐẶT MENU GỢI Ý LỆNH KHI GÕ DẤU /
+try:
+    bot.set_my_commands([
+        BotCommand("start", "Khởi động và xem hướng dẫn"),
+        BotCommand("like", "Buff like Free Fire (/like <UID>)"),
+        BotCommand("check", "Check thông tin & Ban Free Fire (/check <UID>)"),
+        BotCommand("help", "Xem trợ giúp")
+    ])
+    print("✅ Đã cập nhật Menu lệnh Telegram thành công!")
+except Exception as e:
+    print(f"⚠️ Không thể cài đặt Menu lệnh: {e}")
 
-# API Buff Like thật (Region VN & Quốc tế)
+# Hàm gửi request Buff Like thật
 def send_like_real(uid):
     url = f"https://api-freefire-like.vercel.app/like?uid={uid}&region=vn"
     try:
@@ -20,7 +30,7 @@ def send_like_real(uid):
     except Exception:
         return None
 
-# API Check Info & Ban thật
+# Hàm Check thông tin & Ban thật
 def check_info_real(uid):
     url = f"https://api-freefire-like.vercel.app/check?uid={uid}&region=vn"
     try:
@@ -31,11 +41,11 @@ def check_info_real(uid):
     except Exception:
         return None
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start', 'help'])
 def handle_start(message):
     welcome_text = (
         "🤖 **BOT BUFF LIKE FREE FIRE OB55**\n\n"
-        "📌 **Các lệnh hiện có:**\n"
+        "📌 **Danh sách lệnh:**\n"
         "• `/like <UID>` : Buff like cho tài khoản Free Fire\n"
         "• `/check <UID>` : Kiểm tra thông tin & trạng thái Ban\n"
     )
@@ -49,28 +59,30 @@ def handle_like(message):
         return
 
     uid = args[1]
+    user_name = message.from_user.first_name
     bot.reply_to(message, f"⏳ Đang gửi request buff like cho UID `{uid}`...", parse_mode="Markdown")
     
     res = send_like_real(uid)
     
     if res and res.get('status') == 'success':
-        name = res.get('player_name', 'Không xác định')
+        name = res.get('player_name', 'Khách')
         before_likes = res.get('likes_before', 0)
         after_likes = res.get('likes_after', 0)
         added = res.get('likes_given', 0)
         
         msg = (
             f"✅ **BUFF LIKES FREE FIRE THÀNH CÔNG**\n\n"
-            f"• **Tên:** {name}\n"
+            f"• **Yêu cầu bởi:** {user_name}\n"
+            f"• **Tên nhân vật:** {name}\n"
             f"• **UID:** {uid}\n\n"
             f"**Kết quả Likes:**\n"
             f"• Like đã gửi: +{added}\n"
             f"• Biến động Likes: {before_likes} ➡️ {after_likes}\n\n"
-            f"👑 **Lượt còn lại:** Vô hạn (Quyền Admin)"
+            f"👑 **Lượt còn lại:** Vô hạn"
         )
         bot.reply_to(message, msg, parse_mode="Markdown")
     else:
-        bot.reply_to(message, "❌ **Lỗi:** Không thể buff like! UID không tồn tại, sai Region hoặc nick đang bị khóa/giới hạn trong ngày.", parse_mode="Markdown")
+        bot.reply_to(message, "❌ **Lỗi:** Không thể buff like! UID không tồn tại, sai Server hoặc nick đang bị giới hạn/khóa.", parse_mode="Markdown")
 
 @bot.message_handler(commands=['check'])
 def handle_check(message):
@@ -106,7 +118,7 @@ def handle_check(message):
         )
         bot.reply_to(message, msg, parse_mode="Markdown")
     else:
-        bot.reply_to(message, "❌ Không tìm thấy thông tin tài khoản hoặc UID chưa chính xác!", parse_mode="Markdown")
+        bot.reply_to(message, "❌ Không tìm thấy thông tin tài khoản hoặc UID không tồn tại!", parse_mode="Markdown")
 
 if __name__ == "__main__":
     bot.infinity_polling(skip_pending=True)
