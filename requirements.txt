@@ -2,5 +2,4 @@ pyTelegramBotAPI
 requests
 flask
 python-dotenv
-
- 
+waitress
