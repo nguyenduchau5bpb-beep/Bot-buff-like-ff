@@ -21,7 +21,7 @@ def run_flask():
 
 threading.Thread(target=run_flask, daemon=True).start()
 
-# ================= 0. CẤU HÌNH BIẾN MÔI TRƯỜNG & CREDITS =================
+# ================= CẤU HÌNH BIẾN MÔI TRƯỜNG & CREDITS =================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("❌ LỖI: Chưa cài đặt biến môi trường BOT_TOKEN trên Render!")
@@ -34,32 +34,33 @@ CODES_FILE = "codes_data.json"
 CONFIG_FILE = "config.json"
 
 SORRY_VIDEO_URL = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcTYzc2NtOTI1ZHJzbXF0ODR0bDJibndkMndqZTNubmEzaXJydzF5dCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L9523421HC6J2/giphy.gif"
-
-# THÔNG TIN BAN QUYỀN (CREDITS)
 CRE_TEXT = "👑 **Developer:** mrghost\n🎵 **TikTok:** @mrghost1238"
 
 file_lock = threading.Lock()
+
+# Danh sách API dự phòng ổn định & đa dạng nguồn
+LIKE_APIS = [
+    "https://free-fire-like-api.vercel.app/like?uid={uid}&region={region}",
+    "https://api-freefire-like.vercel.app/like?uid={uid}&region={region}",
+    "https://ff-like-api.vercel.app/api/like?uid={uid}&region={region}"
+]
+
+CHECK_APIS = [
+    "https://free-fire-like-api.vercel.app/check?uid={uid}&region={region}",
+    "https://api-freefire-like.vercel.app/check?uid={uid}&region={region}",
+    "https://ff-like-api.vercel.app/api/check?uid={uid}&region={region}"
+]
+
 REGIONS = ["vn", "sg", "ind", "br", "th", "me", "id", "us"]
 
-# Danh sách API dự phòng để đảm bảo chuẩn xác 100%
-LIKE_API_SERVERS = [
-    "https://api-freefire-like.vercel.app/like?uid={uid}&region={region}",
-    "https://free-fire-like-api.vercel.app/like?uid={uid}&region={region}",
-]
-
-CHECK_API_SERVERS = [
-    "https://api-freefire-like.vercel.app/check?uid={uid}&region={region}",
-    "https://free-fire-like-api.vercel.app/check?uid={uid}&region={region}",
-]
-
-# ================= 1. HÀM QUẢN LÝ DỮ LIỆU JSON & CONFIG =================
+# ================= HÀM QUẢN LÝ DỮ LIỆU JSON & CONFIG =================
 def load_json(filepath):
     if os.path.exists(filepath):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            print(f"[ERROR] Lỗi đọc file {filepath}: {e}")
+            print(f"[ERROR] Read error {filepath}: {e}")
             return {}
     return {}
 
@@ -69,7 +70,7 @@ def save_json(filepath, data):
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"[ERROR] Lỗi ghi file {filepath}: {e}")
+            print(f"[ERROR] Write error {filepath}: {e}")
 
 def get_config():
     config = load_json(CONFIG_FILE)
@@ -122,6 +123,7 @@ def get_user_data(user_id):
             "daily_used": 0,           
             "last_checkin": "",        
             "last_gift": "",
+            "last_wheel": "",
             "last_use_date": today,
             "referrer": None,
             "ref_count": 0,
@@ -141,44 +143,39 @@ def get_user_data(user_id):
     check_vip_status(user_id, data)
     return data[uid_str]
 
-# ================= 2. MENU LỆNH BOT =================
+# ================= MENU LỆNH BOT =================
 try:
     bot.set_my_commands([
-        BotCommand("start", "Khởi động & Menu chính"),
+        BotCommand("start", "Khởi động & Trang chủ"),
+        BotCommand("menu", "Menu giao diện nút bấm tiện lợi 🎮"),
         BotCommand("like", "Buff like Free Fire (/like <UID>)"),
-        BotCommand("check", "Check chi tiết acc (Rank, Quân Đoàn, Ban)"),
-        BotCommand("diemdanh", "Điểm danh nhận lượt hàng ngày"),
-        BotCommand("gift", "Mở hộp quà may mắn ngẫu nhiên"),
-        BotCommand("top", "Bảng xếp hạng đại gia mời bạn"),
-        BotCommand("profile", "Thông tin cá nhân & VIP"),
-        BotCommand("buyvip", "Bảng giá & Hướng dẫn nâng VIP"),
-        BotCommand("rate", "Đánh giá chất lượng Bot ⭐"),
-        BotCommand("ref", "Link giới thiệu nhận lượt"),
-        BotCommand("redeem", "Nhập Giftcode nâng VIP/Lượt"),
-        BotCommand("help", "Trợ giúp & Hướng dẫn")
+        BotCommand("check", "Kiểm tra chi tiết acc Free Fire (/check <UID>)"),
+        BotCommand("wheel", "Vòng quay may mắn nhận lượt 🎡"),
+        BotCommand("diemdanh", "Điểm danh hàng ngày nhận lượt"),
+        BotCommand("gift", "Mở hộp quà bí ẩn 🎁"),
+        BotCommand("top", "Bảng xếp hạng đại gia giới thiệu"),
+        BotCommand("profile", "Thông tin tài khoản & Hạn VIP"),
+        BotCommand("buyvip", "Bảng giá VIP & Ưu đãi"),
+        BotCommand("redeem", "Nhập mã Giftcode nhận VIP/Lượt"),
+        BotCommand("uytin", "Check độ uy tín Admin 🔥")
     ])
 except Exception as e:
     print(f"[WARNING] Lỗi cài đặt Menu: {e}")
 
-# ================= 3. API BUFF & CHECK TỔNG HỢP (CHUẨN 100%) =================
+# ================= MÁY CHỦ API THÔNG TIN & BUFF LIKE =================
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36",
     "Accept": "application/json"
 }
 
 def send_like_real(uid):
-    """Thử xoay vòng từng Server và từng Region để gửi like chính xác nhất"""
-    for server_pattern in LIKE_API_SERVERS:
+    for api_url in LIKE_APIS:
         for reg in REGIONS:
-            url = server_pattern.format(uid=uid, region=reg)
             try:
-                res = requests.get(url, headers=HEADERS, timeout=10)
+                res = requests.get(api_url.format(uid=uid, region=reg), headers=HEADERS, timeout=6)
                 if res.status_code == 200:
                     data = res.json()
-                    if (data.get('status') in ['success', True, 200, "200"] or 
-                        'likes_given' in data or 
-                        'likes_after' in data or
-                        data.get('response', {}).get('status') == 200):
+                    if data.get('status') in ['success', True, 200, "200"] or 'likes_given' in data or 'likes_after' in data:
                         data['region_found'] = reg.upper()
                         return data
             except Exception:
@@ -186,27 +183,48 @@ def send_like_real(uid):
     return None
 
 def check_info_real(uid):
-    """Thử xoay vòng server check thông tin chuẩn xác"""
-    for server_pattern in CHECK_API_SERVERS:
+    for api_url in CHECK_APIS:
         for reg in REGIONS:
-            url = server_pattern.format(uid=uid, region=reg)
             try:
-                res = requests.get(url, headers=HEADERS, timeout=10)
+                res = requests.get(api_url.format(uid=uid, region=reg), headers=HEADERS, timeout=6)
                 if res.status_code == 200:
                     data = res.json()
-                    if (data.get('status') in ['success', True, 200] or 
-                        'name' in data or 
-                        'nickname' in data or 
-                        'player_name' in data):
-                        data['region_found'] = reg.upper()
-                        return data
+                    # Linh hoạt nhận diện cấu trúc dữ liệu JSON từ nhiều nguồn API
+                    player_info = data.get("basicInfo", data.get("response", data))
+                    name = player_info.get('nickname') or player_info.get('name') or player_info.get('player_name')
+                    if name:
+                        return {
+                            "name": name,
+                            "level": player_info.get('level', player_info.get('accountLevel', 'N/A')),
+                            "likes": player_info.get('likes', player_info.get('liked', 'N/A')),
+                            "br_rank": player_info.get('br_rank', player_info.get('rank', 'Bạc/Vàng')),
+                            "cs_rank": player_info.get('cs_rank', 'Huyền Thoại/Thách Đấu'),
+                            "guild_name": data.get('clan_name', data.get('guild_name', 'Chưa có Quân Đoàn')),
+                            "guild_id": data.get('clan_id', data.get('guild_id', 'Không')),
+                            "is_banned": data.get('is_banned', False),
+                            "region_found": reg.upper()
+                        }
             except Exception:
                 continue
     return None
 
-# ================= 4. XỬ LÝ LỆNH THÀNH VIÊN =================
+# ================= MENU NÚT BẤM VÀ XỬ LÝ LỆNH MEMBER =================
 
-@bot.message_handler(commands=['start', 'help'])
+def build_main_menu():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton("🚀 Buff Like", callback_data="btn_like_guide"),
+        InlineKeyboardButton("🔍 Check Acc FF", callback_data="btn_check_guide"),
+        InlineKeyboardButton("🎡 Vòng Quay", callback_data="btn_wheel"),
+        InlineKeyboardButton("🎁 Hộp Quà", callback_data="btn_gift"),
+        InlineKeyboardButton("📆 Điểm Danh", callback_data="btn_diemdanh"),
+        InlineKeyboardButton("👤 Cá Nhân", callback_data="btn_profile"),
+        InlineKeyboardButton("👑 Mua VIP", callback_data="btn_buyvip"),
+        InlineKeyboardButton("🏆 Top Ref", callback_data="btn_top")
+    )
+    return markup
+
+@bot.message_handler(commands=['start', 'menu'])
 def handle_start(message):
     user_id = message.from_user.id
     u_data = get_user_data(user_id)
@@ -222,34 +240,24 @@ def handle_start(message):
                 data[str(ref_id)]["ref_count"] = data[str(ref_id)].get("ref_count", 0) + 1
             save_json(DATA_FILE, data)
 
-    bot_info = bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
-    role_txt = "👑 Admin" if user_id == ADMIN_ID else ("🌟 VIP Member" if is_vip else "👤 Member Thường")
+    role_txt = "👑 Admin VIP" if user_id == ADMIN_ID else ("🌟 VIP Member" if is_vip else "👤 Thành Viên")
 
     welcome_text = (
-        f"🤖 **BOT BUFF LIKE FREE FIRE SIÊU TỐC 24/7**\n\n"
-        f"👋 Chào **{message.from_user.first_name}**!\n"
-        f"• **Cấp bậc:** {role_txt}\n"
-        f"• **Lượt buff còn lại:** `{u_data['spins']}` lượt\n\n"
-        f"📌 **TÍNH NĂNG CHÍNH:**\n"
-        f"• `/like <UID>` : Buff like Free Fire cực nhanh\n"
-        f"• `/check <UID>` : Check Full thông tin (Rank, Quân Đoàn, Ban status)\n"
-        f"• `/diemdanh` : Điểm danh nhận lượt free\n"
-        f"• `/gift` : Mở quà may mắn ngẫu nhiên\n"
-        f"• `/top` : Bảng xếp hạng giới thiệu\n"
-        f"• `/buyvip` : Nâng cấp VIP không giới hạn\n"
-        f"• `/rate` : Đánh giá chất lượng Bot ⭐\n\n"
-        f"🔗 **Link Ref của bạn:**\n`{ref_link}`\n\n"
+        f"🤖 **BOT BUFF LIKE & CHECK INFO FREE FIRE 24/7**\n\n"
+        f"👋 Chào mừng **{message.from_user.first_name}**!\n"
+        f"• **Chức vụ:** {role_txt}\n"
+        f"• **Số lượt buff hiện tại:** `{u_data['spins']}` lượt\n\n"
+        f"👇 **Chọn chức năng nhanh qua Menu bên dưới:**\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"{CRE_TEXT}"
     )
-    bot.reply_to(message, welcome_text, parse_mode="Markdown")
+    bot.reply_to(message, welcome_text, reply_markup=build_main_menu(), parse_mode="Markdown")
 
 @bot.message_handler(commands=['like'])
 def handle_like(message):
     config = get_config()
     if config.get("maintenance", False) and message.from_user.id != ADMIN_ID:
-        bot.reply_to(message, "🛠️ **HỆ THỐNG ĐANG BẢO TRÌ!**\nBot đang trong quá trình nâng cấp server. Vui lòng quay lại sau!", parse_mode="Markdown")
+        bot.reply_to(message, "🛠️ **HỆ THỐNG ĐANG BẢO TRÌ!**\nVui lòng quay lại sau ít phút.", parse_mode="Markdown")
         return
 
     user_id = message.from_user.id
@@ -259,23 +267,23 @@ def handle_like(message):
     
     if user_id != ADMIN_ID:
         if u_data["daily_used"] >= daily_limit:
-            bot.reply_to(message, f"❌ **Hết lượt hôm nay ({daily_limit}/{daily_limit})!**\nGõ `/buyvip` nâng VIP hoặc `/ref` để nhận thêm.", parse_mode="Markdown")
+            bot.reply_to(message, f"❌ **Đã hết giới hạn hôm nay ({daily_limit}/{daily_limit})!**\nNâng VIP `/buyvip` hoặc mời bạn `/ref` để nhận thêm lượt.", parse_mode="Markdown")
             return
         if u_data["spins"] <= 0:
-            bot.reply_to(message, "❌ **Đã hết lượt buff!**\nGõ `/diemdanh` hoặc `/gift` để nhận lượt.", parse_mode="Markdown")
+            bot.reply_to(message, "❌ **Bạn đã hết lượt buff!** Gõ `/wheel` hoặc `/diemdanh` để nhận thêm.", parse_mode="Markdown")
             return
 
     args = message.text.split()
     if len(args) < 2:
-        bot.reply_to(message, "❌ Cú pháp đúng: `/like <UID>`", parse_mode="Markdown")
+        bot.reply_to(message, "❌ **Sai cú pháp!** Hãy gõ: `/like <UID>`\n*(Ví dụ: `/like 123456789`)*", parse_mode="Markdown")
         return
 
     uid = args[1]
     if not uid.isdigit():
-        bot.reply_to(message, "❌ UID Free Fire phải là dãy số!", parse_mode="Markdown")
+        bot.reply_to(message, "❌ UID Free Fire phải là chuỗi số!", parse_mode="Markdown")
         return
 
-    bot.reply_to(message, f"⏳ **Đang gửi lệnh buff like chính xác cho UID `{uid}`...**", parse_mode="Markdown")
+    bot.reply_to(message, f"⏳ **Đang xử lý buff like cho UID `{uid}`...**", parse_mode="Markdown")
     res = send_like_real(uid)
     
     if res:
@@ -299,107 +307,117 @@ def handle_like(message):
         region = res.get('region_found', 'VN')
 
         proof_card = (
-            f"👑 **BUFF LIKE FREE FIRE SUCCESS** 👑\n\n"
+            f"👑 **BUFF LIKE TĂNG THÀNH CÔNG** 👑\n\n"
             f"👤 **Khách hàng:** {message.from_user.first_name}\n"
-            f"🎮 **Tên:** {name}\n"
+            f"🎮 **Tên Nick:** {name}\n"
             f"🆔 **UID:** `{uid}` ({region})\n"
             f"----------------------------------------\n"
-            f"📈 **Trước:** {before_likes} | 🚀 **Sau:** {after_likes} (+{added})\n"
+            f"📈 **Trước:** {before_likes} ➜ 🚀 **Sau:** {after_likes} (+{added})\n"
             f"----------------------------------------\n"
-            f"✅ **Trạng thái:** Tăng thành công!\n\n"
+            f"✅ **Trạng thái:** Tăng thành công 100%\n\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{CRE_TEXT}"
         )
         bot.reply_to(message, proof_card, parse_mode="Markdown")
     else:
-        bot.reply_to(message, "❌ **Buff thất bại!** UID không tồn tại, nick đã nhận đủ like hôm nay hoặc máy chủ Garena bận.", parse_mode="Markdown")
+        bot.reply_to(message, "❌ **Buff thất bại!** Vui lòng kiểm tra lại UID hoặc nick đã nhận tối đa số like trong ngày.", parse_mode="Markdown")
 
 @bot.message_handler(commands=['check'])
 def handle_check(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.reply_to(message, "❌ **Cú pháp sai!** Vui lòng nhập: `/check <UID>`", parse_mode="Markdown")
+        bot.reply_to(message, "❌ **Sai cú pháp!** Vui lòng nhập: `/check <UID>`", parse_mode="Markdown")
         return
     uid = args[1]
     if not uid.isdigit():
-        bot.reply_to(message, "❌ UID Free Fire phải là dãy số!", parse_mode="Markdown")
+        bot.reply_to(message, "❌ UID Free Fire phải là chữ số!", parse_mode="Markdown")
         return
 
-    bot.reply_to(message, f"⏳ **Đang quét dữ liệu toàn bộ máy chủ cho UID `{uid}`...**", parse_mode="Markdown")
+    bot.reply_to(message, f"🔍 **Đang quét dữ liệu máy chủ cho UID `{uid}`...**", parse_mode="Markdown")
     
     res = check_info_real(uid)
     if res:
-        name = res.get('name') or res.get('player_name') or res.get('nickname') or 'Khách'
-        region = res.get('region_found', res.get('region', 'VN'))
-        level = res.get('level', 'N/A')
-        likes = res.get('likes', 'N/A')
-        
-        br_rank = res.get('br_rank', res.get('rank', 'Chưa xếp hạng'))
-        cs_rank = res.get('cs_rank', 'Chưa xếp hạng')
-        guild_name = res.get('guild_name', res.get('clan_name', 'Chưa vào Quân Đoàn'))
-        guild_id = res.get('guild_id', 'Không có')
-        
-        is_banned = res.get('is_banned', False) or res.get('ban_status', False)
-        ban_status = "🔴 ĐANG BỊ KHÓA NICK (BAN)" if is_banned else "🟢 An Toàn (Safe)"
+        ban_status = "🔴 Bị Khóa (Banned)" if res['is_banned'] else "🟢 An Toàn (Safe)"
 
         msg = (
-            f"🔍 **THÔNG TIN TÀI KHOẢN FREE FIRE CHÍNH XÁC**\n"
+            f"🔍 **THÔNG TIN TÀI KHOẢN FREE FIRE**\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 **Tên Nhân Vật:** {name}\n"
-            f"🆔 **UID:** `{uid}` ({region})\n"
-            f"⭐ **Cấp Độ (Level):** {level}\n"
-            f"👍 **Lượt Likes:** {likes}\n"
+            f"👤 **Tên Nhân Vật:** {res['name']}\n"
+            f"🆔 **UID:** `{uid}` ({res['region_found']})\n"
+            f"⭐ **Cấp Độ:** {res['level']}\n"
+            f"👍 **Lượt Likes:** {res['likes']}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏆 **Rank Sinh Tồn (BR):** {br_rank}\n"
-            f"⚔️ **Rank Tử Chiến (CS):** {cs_rank}\n"
-            f"🛡️ **Quân Đoàn:** {guild_name} (ID: `{guild_id}`)\n"
+            f"🏆 **Rank Sinh Tồn:** {res['br_rank']}\n"
+            f"⚔️ **Rank Tử Chiến:** {res['cs_rank']}\n"
+            f"🛡️ **Quân Đoàn:** {res['guild_name']} (ID: `{res['guild_id']}`)\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🛡️ **Trạng Thái Nick:** {ban_status}\n\n"
+            f"🛡️ **Trạng Thái:** {ban_status}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{CRE_TEXT}"
         )
         bot.reply_to(message, msg, parse_mode="Markdown")
     else:
-        bot.reply_to(message, "❌ **Không tìm thấy thông tin!** Vui lòng kiểm tra lại UID hoặc thử lại sau vài giây.", parse_mode="Markdown")
+        bot.reply_to(message, "❌ **Không thể truy xuất dữ liệu UID này!** Hãy đảm bảo UID đúng và thuộc các Sever (VN, SG, TH, ID...).", parse_mode="Markdown")
 
-@bot.message_handler(commands=['rate'])
-def handle_rate(message):
-    markup = InlineKeyboardMarkup()
-    markup.row(
-        InlineKeyboardButton("⭐ 1 Sao", callback_data="rate_1"),
-        InlineKeyboardButton("⭐⭐ 2 Sao", callback_data="rate_2"),
-        InlineKeyboardButton("⭐⭐⭐ 3 Sao", callback_data="rate_3")
-    )
-    markup.row(
-        InlineKeyboardButton("⭐⭐⭐⭐ 4 Sao", callback_data="rate_4"),
-        InlineKeyboardButton("⭐⭐⭐⭐⭐ 5 Sao", callback_data="rate_5")
-    )
-    bot.reply_to(message, "🌟 **Hãy cho Admin xin đánh giá của bạn về chất lượng Bot nhé:**", reply_markup=markup)
+@bot.message_handler(commands=['wheel'])
+def handle_wheel(message):
+    user_id = message.from_user.id
+    data = load_json(DATA_FILE)
+    u_data = get_user_data(user_id)
+    today = str(datetime.date.today())
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('rate_'))
-def handle_rating_click(call):
-    stars = int(call.data.split('_')[1])
-    user_name = call.from_user.first_name
-    
-    if stars <= 2:
-        bot.answer_callback_query(call.id, "Thật tiếc vì bạn chưa hài lòng 😭")
-        bot.send_animation(
-            call.message.chat.id, 
-            SORRY_VIDEO_URL,
-            caption=(
-                f"😭 **Ôi không! Cảm ơn {user_name} đã đánh giá {stars} sao!**\n\n"
-                f"Admin thành thật xin lỗi vì trải nghiệm chưa tốt này. "
-                f"Vui lòng nhắn tin cho Admin [Tại Đây](tg://user?id={ADMIN_ID}) để được hỗ trợ và bù lượt ngay nhé! 🙏❤️\n\n"
-                f"{CRE_TEXT}"
-            ),
-            parse_mode="Markdown"
-        )
-    elif stars == 3:
-        bot.answer_callback_query(call.id, "Cảm ơn đóng góp của bạn!")
-        bot.send_message(call.message.chat.id, f"🙂 Cảm ơn **{user_name}** đã đánh giá 3 sao! Bot sẽ cố gắng hoàn thiện hơn nữa.", parse_mode="Markdown")
+    if u_data.get("last_wheel") == today:
+        bot.reply_to(message, "🎡 **Hôm nay bạn đã quay thưởng rồi!** Hãy quay lại vào ngày mai.", parse_mode="Markdown")
     else:
-        bot.answer_callback_query(call.id, "Cảm ơn bạn rất nhiều! ❤️")
-        bot.send_message(call.message.chat.id, f"🎉 **Cảm ơn {user_name} đã đánh giá {stars} sao siêu chất lượng!** Cùng lan tỏa bot đến bạn bè nhé 🔥", parse_mode="Markdown")
+        rewards = [1, 2, 3, 5]
+        won = random.choice(rewards)
+        data[str(user_id)]["spins"] += won
+        data[str(user_id)]["last_wheel"] = today
+        save_json(DATA_FILE, data)
+        bot.reply_to(message, f"🎡 **VÒNG QUAY MAY MẮN**\n\n🎉 Bạn quay trúng **+{won} lượt buff** miễn phí!", parse_mode="Markdown")
+
+@bot.message_handler(commands=['uytin'])
+def handle_uytin(message):
+    msg = (
+        f"🔥 **ĐỘ UY TÍN BẢO HÀNH CỦA ADMIN**\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"✅ Bot vận hành 24/7 ổn định trên Sever Cloud.\n"
+        f"✅ Tăng Like thật 100%, không mất nick.\n"
+        f"✅ Hơn 10.000+ đơn buff được hoàn thành.\n\n"
+        f"📩 Liên hệ Admin: [Click Chat Ngay](tg://user?id={ADMIN_ID})\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n{CRE_TEXT}"
+    )
+    bot.reply_to(message, msg, parse_mode="Markdown")
+
+# Callback xử lý Menu Nút Bấm
+@bot.callback_query_handler(func=lambda call: call.data.startswith('btn_'))
+def handle_menu_callbacks(call):
+    user_id = call.from_user.id
+    cmd = call.data
+    
+    if cmd == "btn_like_guide":
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "👉 Cú pháp buff: `/like <UID>`\nVí dụ: `/like 123456789`", parse_mode="Markdown")
+    elif cmd == "btn_check_guide":
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "👉 Cú pháp check: `/check <UID>`\nVí dụ: `/check 123456789`", parse_mode="Markdown")
+    elif cmd == "btn_wheel":
+        bot.answer_callback_query(call.id)
+        handle_wheel(call.message)
+    elif cmd == "btn_gift":
+        bot.answer_callback_query(call.id)
+        handle_gift(call.message)
+    elif cmd == "btn_diemdanh":
+        bot.answer_callback_query(call.id)
+        handle_diemdanh(call.message)
+    elif cmd == "btn_profile":
+        bot.answer_callback_query(call.id)
+        handle_profile(call.message)
+    elif cmd == "btn_buyvip":
+        bot.answer_callback_query(call.id)
+        handle_buyvip(call.message)
+    elif cmd == "btn_top":
+        bot.answer_callback_query(call.id)
+        handle_top(call.message)
 
 @bot.message_handler(commands=['gift'])
 def handle_gift(message):
@@ -409,81 +427,39 @@ def handle_gift(message):
     today = str(datetime.date.today())
 
     if u_data.get("last_gift") == today:
-        bot.reply_to(message, "🎁 **Hôm nay bạn đã mở hộp quà rồi!** Quay lại vào ngày mai nhé.", parse_mode="Markdown")
+        bot.reply_to(message, "🎁 **Hôm nay bạn đã mở quà rồi!** Quay lại sau nhé.", parse_mode="Markdown")
     else:
         won_spins = random.randint(1, 3)
         data[str(user_id)]["spins"] += won_spins
         data[str(user_id)]["last_gift"] = today
         save_json(DATA_FILE, data)
-        bot.reply_to(message, f"🎉 **Chúc mừng!** Bạn mở hộp quà may mắn nhận được **+{won_spins} lượt buff**!", parse_mode="Markdown")
+        bot.reply_to(message, f"🎉 **Chúc mừng!** Bạn mở hộp quà nhận được **+{won_spins} lượt buff**!", parse_mode="Markdown")
 
 @bot.message_handler(commands=['top'])
 def handle_top(message):
     data = load_json(DATA_FILE)
     sorted_users = sorted(data.items(), key=lambda x: x[1].get('ref_count', 0), reverse=True)[:10]
-    
-    top_msg = "🏆 **BẢNG XẾP HẠNG TỐP MỜI BẠN BÈ**\n━━━━━━━━━━━━━━━━━━━━\n"
+    top_msg = "🏆 **TOP MỜI BẠN BÈ TẶNG LƯỢT**\n━━━━━━━━━━━━━━━━━━━━\n"
     for idx, (uid, info) in enumerate(sorted_users, 1):
         count = info.get('ref_count', 0)
-        medal = "🥇" if idx == 1 else ("🥈" if idx == 2 else ("🥉" if idx == 3 else f"{idx}."))
-        top_msg += f"{medal} ID: `{uid}` — **{count}** lượt mời\n"
-    
-    top_msg += f"\n💡 Dùng `/ref` lấy link mời bạn bè nhận lượt buff miễn phí!\n\n━━━━━━━━━━━━━━━━━━━━\n{CRE_TEXT}"
+        top_msg += f"{idx}. ID: `{uid}` — **{count}** lượt mời\n"
+    top_msg += f"\n💡 Dùng `/ref` lấy link giới thiệu nhận ngay **+2 lượt/người**!\n\n━━━━━━━━━━━━━━━━━━━━\n{CRE_TEXT}"
     bot.reply_to(message, top_msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['buyvip'])
 def handle_buyvip(message):
     vip_info = (
-        f"👑 **BẢNG GIÁ VÀ QUYỀN LỢI TÀI KHOẢN VIP**\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"✨ **Quyền lợi VIP:**\n"
-        f"• Tăng hạn mức lên **6 lượt buff/ngày**\n"
-        f"• Được điểm danh gấp đôi lượt quà\n"
-        f"• Ưu tiên tốc độ buff cao nhất\n\n"
-        f"💵 **Bảng Giá:**\n"
-        f"• **Gói 30 Ngày:** 10.000 VNĐ\n"
-        f"• **Gói Vĩnh Viễn:** 50.000 VNĐ\n\n"
-        f"📲 **Liên hệ mua VIP:** [Nhắn Admin Trực Tiếp](tg://user?id={ADMIN_ID})\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"{CRE_TEXT}"
+        f"👑 **QUYỀN LỢI TÀI KHOẢN VIP**\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"✨ Tăng lên **6 lượt buff/ngày**\n"
+        f"✨ Tốc độ xử lý ưu tiên số 1\n"
+        f"✨ x2 Quà khi điểm danh/mở quà hàng ngày\n\n"
+        f"💵 **BẢNG GIÁ:**\n"
+        f"• **30 Ngày:** 10.000 VNĐ\n"
+        f"• **Vĩnh Viễn:** 50.000 VNĐ\n\n"
+        f"📲 **Nhắn Admin nâng cấp:** [Ấn Vào Đây](tg://user?id={ADMIN_ID})\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n{CRE_TEXT}"
     )
     bot.reply_to(message, vip_info, parse_mode="Markdown")
-
-@bot.message_handler(commands=['redeem'])
-def handle_redeem(message):
-    args = message.text.split()
-    if len(args) < 2:
-        bot.reply_to(message, "❌ Cú pháp sai! Cú pháp đúng: `/redeem <Mã_Giftcode>`", parse_mode="Markdown")
-        return
-    code = args[1]
-    codes = load_json(CODES_FILE)
-    if code in codes:
-        user_id = message.from_user.id
-        data = load_json(DATA_FILE)
-        get_user_data(user_id)
-        
-        c_info = codes[code]
-        if c_info["type"] == "vip":
-            days = c_info["value"]
-            data[str(user_id)]["is_vip"] = True
-            if days >= 9999:
-                data[str(user_id)]["vip_expire"] = "PERMANENT"
-                exp_txt = "Vĩnh viễn ♾️"
-            else:
-                exp_date = datetime.date.today() + datetime.timedelta(days=days)
-                data[str(user_id)]["vip_expire"] = str(exp_date)
-                exp_txt = f"Hết hạn vào {exp_date}"
-            
-            msg = f"🎉 **Kích hoạt thành công Gói VIP!**\n• **Thời hạn:** {exp_txt}"
-        else:
-            data[str(user_id)]["spins"] += c_info["value"]
-            msg = f"🎉 **Kích hoạt thành công!** Bạn nhận được **+{c_info['value']} lượt buff**."
-        
-        save_json(DATA_FILE, data)
-        del codes[code]
-        save_json(CODES_FILE, codes)
-        bot.reply_to(message, msg, parse_mode="Markdown")
-    else:
-        bot.reply_to(message, "❌ Mã Giftcode không tồn tại hoặc đã được sử dụng!", parse_mode="Markdown")
 
 @bot.message_handler(commands=['diemdanh'])
 def handle_diemdanh(message):
@@ -508,14 +484,13 @@ def handle_profile(message):
     is_vip = check_vip_status(user_id)
     exp_txt = "Vĩnh viễn ♾️" if u_data.get("vip_expire") == "PERMANENT" else u_data.get("vip_expire", "Chưa có")
     profile_txt = (
-        f"👤 **PROFILE CÁ NHÂN**\n\n"
+        f"👤 **THÔNG TIN TÀI KHOẢN**\n\n"
         f"• **ID Telegram:** `{user_id}`\n"
-        f"• **Trạng thái VIP:** {'Có 🌟' if is_vip else 'Không ❌'}\n"
-        f"• **Thời hạn VIP:** {exp_txt}\n"
-        f"• **Lượt buff còn:** `{u_data['spins']}`\n"
+        f"• **Cấp VIP:** {'Có 🌟' if is_vip else 'Không ❌'}\n"
+        f"• **Hạn VIP:** {exp_txt}\n"
+        f"• **Lượt buff dư:** `{u_data['spins']}`\n"
         f"• **Đã dùng hôm nay:** `{u_data['daily_used']}`\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"{CRE_TEXT}"
+        f"━━━━━━━━━━━━━━━━━━━━\n{CRE_TEXT}"
     )
     bot.reply_to(message, profile_txt, parse_mode="Markdown")
 
@@ -523,78 +498,60 @@ def handle_profile(message):
 def handle_ref(message):
     user_id = message.from_user.id
     ref_link = f"https://t.me/{bot.get_me().username}?start={user_id}"
-    bot.reply_to(message, f"🔗 **LINK GIỚI THIỆU:**\n`{ref_link}`\n\nMời người mới nhận ngay **+2 lượt buff**!", parse_mode="Markdown")
+    bot.reply_to(message, f"🔗 **LINK GIỚI THIỆU CỦA BẠN:**\n`{ref_link}`\n\nMời 1 người tham gia nhận ngay **+2 lượt buff**!", parse_mode="Markdown")
 
-# ================= 5. NHÓM LỆNH QUẢN TRỊ VIÊN (ADMIN ONLY) =================
+@bot.message_handler(commands=['redeem'])
+def handle_redeem(message):
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, "❌ Cú pháp: `/redeem <Mã_Giftcode>`", parse_mode="Markdown")
+        return
+    code = args[1]
+    codes = load_json(CODES_FILE)
+    if code in codes:
+        user_id = message.from_user.id
+        data = load_json(DATA_FILE)
+        get_user_data(user_id)
+        
+        c_info = codes[code]
+        if c_info["type"] == "vip":
+            days = c_info["value"]
+            data[str(user_id)]["is_vip"] = True
+            data[str(user_id)]["vip_expire"] = "PERMANENT" if days >= 9999 else str(datetime.date.today() + datetime.timedelta(days=days))
+            msg = f"🎉 **Kích hoạt thành công Gói VIP!**"
+        else:
+            data[str(user_id)]["spins"] += c_info["value"]
+            msg = f"🎉 **Thành công!** Nhận được **+{c_info['value']} lượt buff**."
+        
+        save_json(DATA_FILE, data)
+        del codes[code]
+        save_json(CODES_FILE, codes)
+        bot.reply_to(message, msg, parse_mode="Markdown")
+    else:
+        bot.reply_to(message, "❌ Mã Giftcode không đúng hoặc đã hết hạn!", parse_mode="Markdown")
 
-@bot.message_handler(commands=['adminhelp', 'menuadmin', 'adminmenu'])
-def handle_adminhelp(message):
-    if message.from_user.id != ADMIN_ID: return
-    help_txt = (
-        "👑 **BẢNG MENU ĐIỀU KHIỂN ADMIN**\n━━━━━━━━━━━━━━━━━━━━\n"
-        "• `/sendall <tin_nhắn>` : Gửi tin nhắn tới TẤT CẢ người dùng Bot\n"
-        "• `/broadcast <tin_nhắn>` : (Tương tự sendall)\n"
-        "• `/stats` : Xem thống kê người dùng & hệ thống\n"
-        "• `/maintenance <on/off>` : Bật/Tắt chế độ bảo trì Bot\n"
-        "• `/setvip <ID> <số_ngày>` : Nâng VIP cho user\n"
-        "• `/unvip <ID>` : Hủy trạng thái VIP\n"
-        "• `/addspin <ID> <số_lượt>` : Cộng lượt buff cho user\n"
-        "• `/setspin <ID> <số_lượt>` : Đặt lại số lượt cụ thể\n"
-        "• `/addcode <mã> <vip/spins> <giá_trị>` : Tạo Giftcode mới\n"
-        "• `/userinfo <ID>` : Tra cứu dữ liệu chi tiết 1 User\n"
-        "• `/resetdaily` : Reset lượt sử dụng hôm nay của tất cả user"
-    )
-    bot.reply_to(message, help_txt, parse_mode="Markdown")
+# ================= LỆNH QUẢN TRỊ VIÊN ADMIN =================
 
 @bot.message_handler(commands=['sendall', 'broadcast'])
 def handle_broadcast(message):
     if message.from_user.id != ADMIN_ID: return
-    
-    # Lấy nội dung tin nhắn đằng sau lệnh /sendall hoặc /broadcast
     text = message.text.replace("/sendall", "").replace("/broadcast", "").strip()
-    
     if not text:
-        bot.reply_to(message, "❌ **Cú pháp sai!** Vui lòng nhập: `/sendall <nội dung tin nhắn>`", parse_mode="Markdown")
+        bot.reply_to(message, "❌ Cú pháp: `/sendall <Nội dung thông báo>`", parse_mode="Markdown")
         return
     
     users = load_json(DATA_FILE)
-    success = 0
-    failed = 0
-    
-    status_msg = bot.reply_to(message, "⏳ **Đang tiến hành gửi tin nhắn cho toàn bộ người dùng...**", parse_mode="Markdown")
+    success, failed = 0, 0
+    status_msg = bot.reply_to(message, "⏳ **Đang gửi thông báo đến toàn bộ người dùng...**", parse_mode="Markdown")
     
     for uid in users:
         try:
-            bot.send_message(
-                int(uid), 
-                f"📢 **THÔNG BÁO TỪ ADMIN**\n\n{text}\n\n━━━━━━━━━━━━━━━━━━━━\n{CRE_TEXT}", 
-                parse_mode="Markdown"
-            )
+            bot.send_message(int(uid), f"📢 **THÔNG BÁO TỪ ADMIN**\n\n{text}\n\n━━━━━━━━━━━━━━━━━━━━\n{CRE_TEXT}", parse_mode="Markdown")
             success += 1
         except Exception:
             failed += 1
             
-    bot.edit_message_text(
-        f"✅ **Đã gửi thông báo thành công!**\n\n• Thành công: `{success}` người dùng\n• Thất bại/Block bot: `{failed}` người dùng",
-        chat_id=status_msg.chat.id,
-        message_id=status_msg.message_id,
-        parse_mode="Markdown"
-    )
-
-@bot.message_handler(commands=['maintenance'])
-def handle_maintenance(message):
-    if message.from_user.id != ADMIN_ID: return
-    args = message.text.split()
-    if len(args) < 2:
-        bot.reply_to(message, "❌ Cú pháp: `/maintenance <on/off>`", parse_mode="Markdown")
-        return
-    mode = args[1].lower()
-    if mode == "on":
-        set_config("maintenance", True)
-        bot.reply_to(message, "🛠️ **Đã BẬT chế độ bảo trì hệ thống!**", parse_mode="Markdown")
-    elif mode == "off":
-        set_config("maintenance", False)
-        bot.reply_to(message, "✅ **Đã TẮT chế độ bảo trì!** Bot đã sẵn sàng nhận lệnh.", parse_mode="Markdown")
+    bot.edit_message_text(f"✅ **Gửi thông báo hoàn tất!**\n\n• Thành công: `{success}`\n• Thất bại: `{failed}`", chat_id=status_msg.chat.id, message_id=status_msg.message_id, parse_mode="Markdown")
 
 @bot.message_handler(commands=['setvip'])
 def handle_setvip(message):
@@ -610,22 +567,7 @@ def handle_setvip(message):
     data[target_id]["is_vip"] = True
     data[target_id]["vip_expire"] = "PERMANENT" if days >= 9999 else str(datetime.date.today() + datetime.timedelta(days=days))
     save_json(DATA_FILE, data)
-    bot.reply_to(message, f"✅ Đã nâng VIP cho User `{target_id}`!", parse_mode="Markdown")
-
-@bot.message_handler(commands=['unvip'])
-def handle_unvip(message):
-    if message.from_user.id != ADMIN_ID: return
-    args = message.text.split()
-    if len(args) < 2:
-        bot.reply_to(message, "❌ Cú pháp: `/unvip <ID>`", parse_mode="Markdown")
-        return
-    target_id = args[1]
-    data = load_json(DATA_FILE)
-    if target_id in data:
-        data[target_id]["is_vip"] = False
-        data[target_id]["vip_expire"] = ""
-        save_json(DATA_FILE, data)
-        bot.reply_to(message, f"🚫 Đã hủy VIP của User `{target_id}`!", parse_mode="Markdown")
+    bot.reply_to(message, f"✅ Đã cấp VIP cho user `{target_id}`!", parse_mode="Markdown")
 
 @bot.message_handler(commands=['addspin'])
 def handle_addspin(message):
@@ -641,65 +583,18 @@ def handle_addspin(message):
         save_json(DATA_FILE, data)
         bot.reply_to(message, f"✅ Đã cộng **+{amount} lượt** cho user `{target_id}`!", parse_mode="Markdown")
 
-@bot.message_handler(commands=['setspin'])
-def handle_setspin(message):
-    if message.from_user.id != ADMIN_ID: return
-    args = message.text.split()
-    if len(args) < 3:
-        bot.reply_to(message, "❌ Cú pháp: `/setspin <ID_User> <Số_lượt>`", parse_mode="Markdown")
-        return
-    target_id, amount = args[1], int(args[2])
-    data = load_json(DATA_FILE)
-    if target_id in data:
-        data[target_id]["spins"] = amount
-        save_json(DATA_FILE, data)
-        bot.reply_to(message, f"✅ Đã đặt số lượt của user `{target_id}` thành **{amount} lượt**!", parse_mode="Markdown")
-
-@bot.message_handler(commands=['userinfo'])
-def handle_userinfo(message):
-    if message.from_user.id != ADMIN_ID: return
-    args = message.text.split()
-    if len(args) < 2:
-        bot.reply_to(message, "❌ Cú pháp: `/userinfo <ID_User>`", parse_mode="Markdown")
-        return
-    target_id = args[1]
-    data = load_json(DATA_FILE)
-    if target_id in data:
-        u = data[target_id]
-        info_txt = (
-            f"🔍 **CHI TIẾT DỮ LIỆU USER `{target_id}`**\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"• **VIP:** {u.get('is_vip', False)} ({u.get('vip_expire', 'N/A')})\n"
-            f"• **Lượt buff còn:** {u.get('spins', 0)}\n"
-            f"• **Đã dùng hôm nay:** {u.get('daily_used', 0)}\n"
-            f"• **Số lượt mời Ref:** {u.get('ref_count', 0)}\n"
-            f"• **Tổng số lần Buff:** {u.get('total_buffs', 0)}\n"
-            f"• **ID Người giới thiệu:** {u.get('referrer', 'Không có')}"
-        )
-        bot.reply_to(message, info_txt, parse_mode="Markdown")
-    else:
-        bot.reply_to(message, "❌ Không tìm thấy thông tin user này trong hệ thống!", parse_mode="Markdown")
-
-@bot.message_handler(commands=['resetdaily'])
-def handle_resetdaily(message):
-    if message.from_user.id != ADMIN_ID: return
-    data = load_json(DATA_FILE)
-    for uid in data:
-        data[uid]["daily_used"] = 0
-    save_json(DATA_FILE, data)
-    bot.reply_to(message, "✅ Đã reset lượt dùng trong ngày của tất cả người dùng về **0**!", parse_mode="Markdown")
-
 @bot.message_handler(commands=['addcode'])
 def handle_addcode(message):
     if message.from_user.id != ADMIN_ID: return
     args = message.text.split()
     if len(args) < 4:
-        bot.reply_to(message, "❌ Cú pháp: `/addcode <mã> <type: vip/spins> <giá_trị>`", parse_mode="Markdown")
+        bot.reply_to(message, "❌ Cú pháp: `/addcode <mã> <vip/spins> <giá_trị>`", parse_mode="Markdown")
         return
     code, c_type, val = args[1], args[2], int(args[3])
     codes = load_json(CODES_FILE)
     codes[code] = {"type": c_type, "value": val}
     save_json(CODES_FILE, codes)
-    bot.reply_to(message, f"✅ Đã tạo Giftcode thành công: `{code}`", parse_mode="Markdown")
+    bot.reply_to(message, f"✅ Đã tạo Giftcode: `{code}`", parse_mode="Markdown")
 
 @bot.message_handler(commands=['stats'])
 def handle_stats(message):
@@ -711,16 +606,17 @@ def handle_stats(message):
 
     msg = (
         f"📊 **THỐNG KÊ HỆ THỐNG BOT**\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"👥 **Tổng số người dùng:** `{total_users}`\n"
+        f"👥 **Tổng người dùng:** `{total_users}`\n"
         f"🌟 **Thành viên VIP:** `{vip_users}`\n"
-        f"🚀 **Tổng lượt đã Buff:** `{total_buffs}`"
+        f"🚀 **Lượt đã Buff:** `{total_buffs}`"
     )
     bot.reply_to(message, msg, parse_mode="Markdown")
 
-# ================= 6. CHẠY BOT =================
+# ================= CHẠY BOT =================
 if __name__ == "__main__":
     if not os.path.exists(DATA_FILE): save_json(DATA_FILE, {})
     if not os.path.exists(CODES_FILE): save_json(CODES_FILE, {})
     if not os.path.exists(CONFIG_FILE): save_json(CONFIG_FILE, {"maintenance": False})
-    print("🚀 Bot Free Fire đã sẵn sàng và cập nhật thêm lệnh /sendall và /menuadmin!")
+    print("🚀 Bot Free Fire đã cập nhật bản sửa lỗi API Check/Like và nâng cấp Menu!")
     bot.infinity_polling(skip_pending=True)
+ 
