@@ -78,7 +78,6 @@ def get_user_data(user_id):
             data[uid_str]["last_use_date"] = today
             save_json(DATA_FILE, data)
 
-    # Kiểm tra hạn VIP mỗi khi gọi user data
     check_vip_status(user_id)
     return data[str(user_id)]
 
@@ -151,21 +150,20 @@ def handle_start(message):
     )
     bot.reply_to(message, welcome_text, parse_mode="Markdown")
 
-# --- LỆNH CẤP VIP TRỰC TIẾP CỦA ADMIN ---
+# --- LỆNH ADMIN: CẤP VIP TRỰC TIẾP ---
 @bot.message_handler(commands=['setvip'])
 def handle_setvip(message):
     if message.from_user.id != ADMIN_ID:
         return
     args = message.text.split()
     if len(args) < 3:
-        bot.reply_to(message, "❌ **Cú pháp:** `/setvip <Telegram_ID> <Số_ngày>`\n*(Dùng số ngày >= 9999 để cấp VIP Vĩnh viễn)*", parse_mode="Markdown")
+        bot.reply_to(message, "❌ **Cú pháp:** `/setvip <Telegram_ID> <Số_ngày>`\n*(Nhập số ngày >= 9999 để cấp VIP Vĩnh viễn)*", parse_mode="Markdown")
         return
     
     target_id = args[1]
     days = int(args[2])
     data = load_json(DATA_FILE)
     
-    # Tạo user nếu chưa có
     if target_id not in data:
         get_user_data(int(target_id))
         data = load_json(DATA_FILE)
@@ -183,18 +181,18 @@ def handle_setvip(message):
     bot.reply_to(message, f"✅ **Đã nâng VIP thành công!**\n• **ID:** `{target_id}`\n• **Thời hạn:** {expire_txt}", parse_mode="Markdown")
     
     try:
-        bot.send_message(int(target_id), f"🎉 **Chúc mừng! Admin đã nâng cấp tài khoản của bạn lên VIP!**\n• **Thời hạn:** {expire_txt}\n• Bạn được nhận 6 lượt buff mỗi ngày!", parse_mode="Markdown")
+        bot.send_message(int(target_id), f"🎉 **Chúc mừng! Admin đã nâng cấp tài khoản của bạn lên VIP!**\n• **Thời hạn:** {expire_txt}\n• Hạn mức: 6 lượt buff mỗi ngày!", parse_mode="Markdown")
     except Exception:
         pass
 
-# --- LỆNH TẠO CODE (CÓ THỜI HẠN VIP) ---
+# --- LỆNH ADMIN: TẠO CODE ---
 @bot.message_handler(commands=['addcode'])
 def handle_addcode(message):
     if message.from_user.id != ADMIN_ID:
         return
     args = message.text.split()
-    if len(args) < 3:
-        bot.reply_to(message, "❌ **Cú pháp:** `/addcode <mã> <type: vip/spins> <giá_trị>`\nVD VIP 30 ngày: `/addcode VIP30 vip 30`\nVD VIP Vĩnh viễn: `/addcode VIPVIP vip 9999`\nVD Thêm 10 lượt: `/addcode LOUT10 spins 10`", parse_mode="Markdown")
+    if len(args) < 4:
+        bot.reply_to(message, "❌ **Cú pháp:** `/addcode <mã> <type: vip/spins> <giá_trị>`\n• VD VIP 30 ngày: `/addcode VIP30 vip 30`\n• VD VIP Vĩnh viễn: `/addcode VIPVIP vip 9999`\n• VD Thêm 10 lượt: `/addcode LOUT10 spins 10`", parse_mode="Markdown")
         return
     code, c_type, val = args[1], args[2], int(args[3])
     codes = load_json(CODES_FILE)
@@ -202,7 +200,7 @@ def handle_addcode(message):
     save_json(CODES_FILE, codes)
     bot.reply_to(message, f"✅ Đã tạo Giftcode thành công: `{code}`", parse_mode="Markdown")
 
-# --- LỆNH NHẬP CODE ---
+# --- LỆNH NHẬP CODE (REDEEM) ---
 @bot.message_handler(commands=['redeem'])
 def handle_redeem(message):
     args = message.text.split()
@@ -266,7 +264,6 @@ def handle_like(message):
     u_data = get_user_data(user_id)
     is_vip = check_vip_status(user_id)
     
-    # Kiểm tra hạn mức ngày
     daily_limit = 99999 if user_id == ADMIN_ID else (6 if is_vip else 3)
     
     if user_id != ADMIN_ID:
@@ -293,7 +290,6 @@ def handle_like(message):
             data[str(user_id)]["daily_used"] += 1
             save_json(DATA_FILE, data)
 
-        # Xử lý thưởng Ref
         if not u_data["has_buffed"] and u_data["referrer"]:
             ref_id = u_data["referrer"]
             ref_data = load_json(DATA_FILE)
@@ -313,9 +309,7 @@ def handle_like(message):
         added = res.get('likes_given', 0)
 
         proof_card = (
-            f"╔════════════════════════╗\n"
-            f"   🔥 **FREE FIRE BUFF PROOF CARD** 🔥\n"
-            f"╚════════════════════════╝\n\n"
+            f"👑 **ADMIN FREE FIRE BUFF PROOF** 👑\n\n"
             f"👤 **Khách hàng:** {message.from_user.first_name}\n"
             f"🎮 **Tên Nhân Vật:** {name}\n"
             f"🆔 **UID:** `{uid}`\n"
@@ -324,6 +318,7 @@ def handle_like(message):
             f"🚀 **Likes Sau:** {after_likes} (+{added})\n"
             f"----------------------------------------\n"
             f"✅ **Trạng thái:** Thành Công (Success)\n"
+            f"🎵 **TikTok:** @mrghost1238\n"
             f"🤖 **Bot:** @{bot.get_me().username}"
         )
         bot.reply_to(message, proof_card, parse_mode="Markdown")
@@ -350,7 +345,7 @@ def handle_profile(message):
 
     bot.reply_to(message, f"👤 **THÔNG TIN CÁ NHÂN**\n\n• **ID Telegram:** `{user_id}`\n• **Chức vụ:** {role_txt}\n• **Hạn VIP:** {exp_txt}\n• **Số lượt còn lại:** `{u_data['spins']}`\n• **Đã dùng hôm nay:** `{u_data['daily_used']}`", parse_mode="Markdown")
 
-# --- LỆNH BROADCAST GỬI THÔNG BÁO HÀNG LOẠT ---
+# --- LỆNH ADMIN: BROADCAST GỬI THÔNG BÁO ---
 @bot.message_handler(commands=['broadcast'])
 def handle_broadcast(message):
     if message.from_user.id != ADMIN_ID:
