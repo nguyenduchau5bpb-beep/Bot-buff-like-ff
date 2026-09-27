@@ -27,6 +27,33 @@ def save_json(filepath, data):
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+def check_vip_status(user_id):
+    """Kiểm tra và cập nhật trạng thái VIP dựa trên ngày hết hạn"""
+    data = load_json(DATA_FILE)
+    uid_str = str(user_id)
+    if uid_str not in data:
+        return False
+    
+    u = data[uid_str]
+    if u.get("is_vip", False):
+        vip_expire = u.get("vip_expire", "")
+        if vip_expire == "PERMANENT":
+            return True
+        elif vip_expire:
+            try:
+                exp_date = datetime.datetime.strptime(vip_expire, "%Y-%m-%d").date()
+                if datetime.date.today() <= exp_date:
+                    return True
+                else:
+                    # Hết hạn VIP -> Trở về tài khoản thường
+                    data[uid_str]["is_vip"] = False
+                    data[uid_str]["vip_expire"] = ""
+                    save_json(DATA_FILE, data)
+                    return False
+            except Exception:
+                return False
+    return False
+
 def get_user_data(user_id):
     data = load_json(DATA_FILE)
     uid_str = str(user_id)
@@ -35,9 +62,10 @@ def get_user_data(user_id):
     if uid_str not in data:
         data[uid_str] = {
             "is_vip": False,
-            "spins": 3,              # Lượt tặng ban đầu
-            "daily_used": 0,          # Số lượt đã dùng hôm nay
-            "last_checkin": "",       # Ngày điểm danh gần nhất
+            "vip_expire": "",         # Ngày hết hạn VIP ("YYYY-MM-DD" hoặc "PERMANENT")
+            "spins": 3,               # Lượt tặng ban đầu
+            "daily_used": 0,           # Số lượt đã dùng hôm nay
+            "last_checkin": "",        # Ngày điểm danh gần nhất
             "last_use_date": today,
             "referrer": None,
             "has_buffed": False
@@ -50,7 +78,9 @@ def get_user_data(user_id):
             data[uid_str]["last_use_date"] = today
             save_json(DATA_FILE, data)
 
-    return data[uid_str]
+    # Kiểm tra hạn VIP mỗi khi gọi user data
+    check_vip_status(user_id)
+    return data[str(user_id)]
 
 # ================= 2. ĐĂNG KÝ MENU LỆNH TELEGRAM =================
 try:
@@ -59,7 +89,7 @@ try:
         BotCommand("like", "Buff like Free Fire (/like <UID>)"),
         BotCommand("check", "Check thông tin & Ban (/check <UID>)"),
         BotCommand("diemdanh", "Điểm danh hàng ngày nhận lượt"),
-        BotCommand("profile", "Xem thông tin & Cấp VIP"),
+        BotCommand("profile", "Xem thông tin & Hạn VIP"),
         BotCommand("ref", "Lấy link mời bạn bè nhận lượt"),
         BotCommand("redeem", "Nhập Giftcode nâng VIP/Lượt (/redeem <code>)"),
         BotCommand("help", "Xem trợ giúp")
@@ -90,6 +120,7 @@ def check_info_real(uid):
 def handle_start(message):
     user_id = message.from_user.id
     u_data = get_user_data(user_id)
+    is_vip = check_vip_status(user_id)
     
     args = message.text.split()
     if len(args) > 1 and args[1].isdigit():
@@ -102,7 +133,7 @@ def handle_start(message):
     bot_info = bot.get_me()
     ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
 
-    role_txt = "👑 Admin" if user_id == ADMIN_ID else ("🌟 Thành viên VIP" if u_data["is_vip"] else "👤 Thành viên Thường")
+    role_txt = "👑 Admin" if user_id == ADMIN_ID else ("🌟 Thành viên VIP" if is_vip else "👤 Thành viên Thường")
 
     welcome_text = (
         f"🤖 **BOT BUFF LIKE FREE FIRE OB55**\n\n"
@@ -120,36 +151,127 @@ def handle_start(message):
     )
     bot.reply_to(message, welcome_text, parse_mode="Markdown")
 
+# --- LỆNH CẤP VIP TRỰC TIẾP CỦA ADMIN ---
+@bot.message_handler(commands=['setvip'])
+def handle_setvip(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    args = message.text.split()
+    if len(args) < 3:
+        bot.reply_to(message, "❌ **Cú pháp:** `/setvip <Telegram_ID> <Số_ngày>`\n*(Dùng số ngày >= 9999 để cấp VIP Vĩnh viễn)*", parse_mode="Markdown")
+        return
+    
+    target_id = args[1]
+    days = int(args[2])
+    data = load_json(DATA_FILE)
+    
+    # Tạo user nếu chưa có
+    if target_id not in data:
+        get_user_data(int(target_id))
+        data = load_json(DATA_FILE)
+        
+    data[target_id]["is_vip"] = True
+    if days >= 9999:
+        data[target_id]["vip_expire"] = "PERMANENT"
+        expire_txt = "Vĩnh viễn (Vô thời hạn) ♾️"
+    else:
+        exp_date = datetime.date.today() + datetime.timedelta(days=days)
+        data[target_id]["vip_expire"] = str(exp_date)
+        expire_txt = f"Hết hạn vào {exp_date}"
+
+    save_json(DATA_FILE, data)
+    bot.reply_to(message, f"✅ **Đã nâng VIP thành công!**\n• **ID:** `{target_id}`\n• **Thời hạn:** {expire_txt}", parse_mode="Markdown")
+    
+    try:
+        bot.send_message(int(target_id), f"🎉 **Chúc mừng! Admin đã nâng cấp tài khoản của bạn lên VIP!**\n• **Thời hạn:** {expire_txt}\n• Bạn được nhận 6 lượt buff mỗi ngày!", parse_mode="Markdown")
+    except Exception:
+        pass
+
+# --- LỆNH TẠO CODE (CÓ THỜI HẠN VIP) ---
+@bot.message_handler(commands=['addcode'])
+def handle_addcode(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    args = message.text.split()
+    if len(args) < 3:
+        bot.reply_to(message, "❌ **Cú pháp:** `/addcode <mã> <type: vip/spins> <giá_trị>`\nVD VIP 30 ngày: `/addcode VIP30 vip 30`\nVD VIP Vĩnh viễn: `/addcode VIPVIP vip 9999`\nVD Thêm 10 lượt: `/addcode LOUT10 spins 10`", parse_mode="Markdown")
+        return
+    code, c_type, val = args[1], args[2], int(args[3])
+    codes = load_json(CODES_FILE)
+    codes[code] = {"type": c_type, "value": val}
+    save_json(CODES_FILE, codes)
+    bot.reply_to(message, f"✅ Đã tạo Giftcode thành công: `{code}`", parse_mode="Markdown")
+
+# --- LỆNH NHẬP CODE ---
+@bot.message_handler(commands=['redeem'])
+def handle_redeem(message):
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, "❌ Cú pháp sai! Cú pháp đúng: `/redeem <Mã_Giftcode>`", parse_mode="Markdown")
+        return
+    code = args[1]
+    codes = load_json(CODES_FILE)
+    if code in codes:
+        user_id = message.from_user.id
+        data = load_json(DATA_FILE)
+        get_user_data(user_id)
+        
+        c_info = codes[code]
+        if c_info["type"] == "vip":
+            days = c_info["value"]
+            data[str(user_id)]["is_vip"] = True
+            if days >= 9999:
+                data[str(user_id)]["vip_expire"] = "PERMANENT"
+                exp_txt = "Vĩnh viễn ♾️"
+            else:
+                exp_date = datetime.date.today() + datetime.timedelta(days=days)
+                data[str(user_id)]["vip_expire"] = str(exp_date)
+                exp_txt = f"Hết hạn vào {exp_date}"
+            
+            msg = f"🎉 **Chúc mừng! Bạn đã kích hoạt thành công Gói VIP!**\n• **Thời hạn:** {exp_txt}\n• Hạn mức: 6 lượt buff/ngày."
+        else:
+            data[str(user_id)]["spins"] += c_info["value"]
+            msg = f"🎉 **Kích hoạt thành công!** Bạn nhận được **+{c_info['value']} lượt buff**."
+        
+        save_json(DATA_FILE, data)
+        del codes[code]
+        save_json(CODES_FILE, codes)
+        bot.reply_to(message, msg, parse_mode="Markdown")
+    else:
+        bot.reply_to(message, "❌ **Mã Giftcode không tồn tại hoặc đã được sử dụng!**", parse_mode="Markdown")
+
 # --- LỆNH ĐIỂM DANH HÀNG NGÀY ---
 @bot.message_handler(commands=['diemdanh'])
 def handle_diemdanh(message):
     user_id = message.from_user.id
     data = load_json(DATA_FILE)
     u_data = get_user_data(user_id)
+    is_vip = check_vip_status(user_id)
     today = str(datetime.date.today())
 
     if u_data.get("last_checkin") == today:
         bot.reply_to(message, "❌ **Hôm nay bạn đã điểm danh rồi!** Quay lại vào ngày mai nhé.", parse_mode="Markdown")
     else:
-        bonus = 2 if u_data["is_vip"] else 1
+        bonus = 2 if is_vip else 1
         data[str(user_id)]["spins"] += bonus
         data[str(user_id)]["last_checkin"] = today
         save_json(DATA_FILE, data)
         bot.reply_to(message, f"🎉 **Điểm danh thành công!** Bạn nhận được **+{bonus} lượt buff** hôm nay.", parse_mode="Markdown")
 
-# --- LỆNH BUFF LIKE + KHUNG FEEDBACK PROOF CARD ---
+# --- LỆNH BUFF LIKE ---
 @bot.message_handler(commands=['like'])
 def handle_like(message):
     user_id = message.from_user.id
     data = load_json(DATA_FILE)
     u_data = get_user_data(user_id)
+    is_vip = check_vip_status(user_id)
     
     # Kiểm tra hạn mức ngày
-    daily_limit = 99999 if user_id == ADMIN_ID else (6 if u_data["is_vip"] else 3)
+    daily_limit = 99999 if user_id == ADMIN_ID else (6 if is_vip else 3)
     
     if user_id != ADMIN_ID:
         if u_data["daily_used"] >= daily_limit:
-            bot.reply_to(message, f"❌ **Bạn đã dùng hết {daily_limit} lượt buff hôm nay!**\nNâng cấp VIP để có 6 lượt/ngày hoặc dùng `/ref` để lấy thêm lượt.", parse_mode="Markdown")
+            bot.reply_to(message, f"❌ **Bạn đã dùng hết {daily_limit} lượt buff hôm nay!**\nNâng cấp VIP để có 6 lượt/ngày hoặc gõ `/ref` để nhận thêm lượt.", parse_mode="Markdown")
             return
         if u_data["spins"] <= 0:
             bot.reply_to(message, "❌ **Bạn đã hết lượt buff!**\nGõ `/diemdanh` hoặc `/ref` để nhận thêm lượt.", parse_mode="Markdown")
@@ -190,7 +312,6 @@ def handle_like(message):
         after_likes = res.get('likes_after', 0)
         added = res.get('likes_given', 0)
 
-        # BẢNG THẺ PROOF PRO TÍNH NĂNG 2
         proof_card = (
             f"╔════════════════════════╗\n"
             f"   🔥 **FREE FIRE BUFF PROOF CARD** 🔥\n"
@@ -209,48 +330,25 @@ def handle_like(message):
     else:
         bot.reply_to(message, "❌ **Buff thất bại!** UID không tồn tại hoặc nick đang bị khóa 7 ngày.", parse_mode="Markdown")
 
-# --- LỆNH CỦA ADMIN: LỆNH NHẬP CODE & MỜI VIP ---
-@bot.message_handler(commands=['addcode'])
-def handle_addcode(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    args = message.text.split()
-    if len(args) < 3:
-        bot.reply_to(message, "Cú pháp: `/addcode <mã> <type: vip/spins> <giá_trị>`\nVD: `/addcode VIP123 vip 1`", parse_mode="Markdown")
-        return
-    code, c_type, val = args[1], args[2], int(args[3])
-    codes = load_json(CODES_FILE)
-    codes[code] = {"type": c_type, "value": val}
-    save_json(CODES_FILE, codes)
-    bot.reply_to(message, f"✅ Đã tạo Giftcode thành công: `{code}`", parse_mode="Markdown")
-
-@bot.message_handler(commands=['redeem'])
-def handle_redeem(message):
-    args = message.text.split()
-    if len(args) < 2:
-        bot.reply_to(message, "❌ Cú pháp sai! Cú pháp đúng: `/redeem <Mã_Giftcode>`", parse_mode="Markdown")
-        return
-    code = args[1]
-    codes = load_json(CODES_FILE)
-    if code in codes:
-        user_id = message.from_user.id
-        data = load_json(DATA_FILE)
-        get_user_data(user_id)
-        
-        c_info = codes[code]
-        if c_info["type"] == "vip":
-            data[str(user_id)]["is_vip"] = True
-            msg = "🎉 **Chúc mừng! Bạn đã kích hoạt thành công Gói VIP (6 lượt buff/ngày)!**"
-        else:
-            data[str(user_id)]["spins"] += c_info["value"]
-            msg = f"🎉 **Kích hoạt thành công!** Bạn nhận được **+{c_info['value']} lượt buff**."
-        
-        save_json(DATA_FILE, data)
-        del codes[code]
-        save_json(CODES_FILE, codes)
-        bot.reply_to(message, msg, parse_mode="Markdown")
+# --- LỆNH XEM CÁ NHÂN & THỜI HẠN VIP ---
+@bot.message_handler(commands=['profile'])
+def handle_profile(message):
+    user_id = message.from_user.id
+    u_data = get_user_data(user_id)
+    is_vip = check_vip_status(user_id)
+    
+    if user_id == ADMIN_ID:
+        role_txt = "👑 Admin (Vô hạn)"
+        exp_txt = "Vĩnh viễn ♾️"
+    elif is_vip:
+        role_txt = "🌟 Thành viên VIP (6 lượt/ngày)"
+        exp_val = u_data.get("vip_expire", "")
+        exp_txt = "Vĩnh viễn ♾️" if exp_val == "PERMANENT" else f"Hết hạn: {exp_val}"
     else:
-        bot.reply_to(message, "❌ **Mã Giftcode không tồn tại hoặc đã được sử dụng!**", parse_mode="Markdown")
+        role_txt = "👤 Thành viên Thường (3 lượt/ngày)"
+        exp_txt = "Không có"
+
+    bot.reply_to(message, f"👤 **THÔNG TIN CÁ NHÂN**\n\n• **ID Telegram:** `{user_id}`\n• **Chức vụ:** {role_txt}\n• **Hạn VIP:** {exp_txt}\n• **Số lượt còn lại:** `{u_data['spins']}`\n• **Đã dùng hôm nay:** `{u_data['daily_used']}`", parse_mode="Markdown")
 
 # --- LỆNH BROADCAST GỬI THÔNG BÁO HÀNG LOẠT ---
 @bot.message_handler(commands=['broadcast'])
@@ -272,7 +370,7 @@ def handle_broadcast(message):
             pass
     bot.reply_to(message, f"✅ Đã gửi thông báo thành công đến **{success}/{len(users)}** người dùng!", parse_mode="Markdown")
 
-# --- CÁC LỆNH KHÁC ---
+# --- LỆNH CHECK UID ---
 @bot.message_handler(commands=['check'])
 def handle_check(message):
     args = message.text.split()
@@ -288,25 +386,17 @@ def handle_check(message):
     else:
         bot.reply_to(message, "❌ Không tìm thấy thông tin tài khoản!", parse_mode="Markdown")
 
+# --- LỆNH REF ---
 @bot.message_handler(commands=['ref'])
 def handle_ref(message):
     user_id = message.from_user.id
     ref_link = f"https://t.me/{bot.get_me().username}?start={user_id}"
     bot.reply_to(message, f"🎉 **HỆ THỐNG MỜI BẠN BÈ**\n\nLink giới thiệu:\n`{ref_link}`\n\nMời người mới buff thành công lần đầu nhận ngay **+2 lượt buff**!", parse_mode="Markdown")
 
-@bot.message_handler(commands=['profile'])
-def handle_profile(message):
-    user_id = message.from_user.id
-    u_data = get_user_data(user_id)
-    role_txt = "👑 Admin" if user_id == ADMIN_ID else ("🌟 VIP (6 lượt/ngày)" if u_data["is_vip"] else "👤 Thường (3 lượt/ngày)")
-    bot.reply_to(message, f"👤 **THÔNG TIN CÁ NHÂN**\n\n• ID: `{user_id}`\n• Chức vụ: {role_txt}\n• Số lượt còn lại: `{u_data['spins']}`\n• Đã dùng hôm nay: `{u_data['daily_used']}`", parse_mode="Markdown")
-
 if __name__ == "__main__":
-    # Asegura la existencia de los archivos JSON al iniciar
     if not os.path.exists(DATA_FILE):
         save_json(DATA_FILE, {})
     if not os.path.exists(CODES_FILE):
         save_json(CODES_FILE, {})
 
     bot.infinity_polling(skip_pending=True)
- 
