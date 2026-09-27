@@ -1,0 +1,8 @@
+httpx
+protobuf
+pycryptodome
+pyTelegramBotAPI
+requests
+Flask
+gunicorn
+
