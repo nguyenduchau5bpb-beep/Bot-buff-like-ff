@@ -1,167 +1,112 @@
 import os
-import random
-import datetime
 import requests
 import telebot
-from flask import Flask
-from threading import Thread
 
-# Import module từ repository gốc nếu có
-try:
-    from send_like import send_like
-except ImportError:
-    send_like = None
-
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+# Lấy Token từ biến môi trường Render
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ==========================================
-# CẤU HÌNH ADMIN (ID Telegram của bạn)
-# ==========================================
-ADMIN_IDS = [8474356606]
+# UID Admin có quyền dùng vô hạn
+ADMIN_ID = "8474356606"
 
-# Bộ nhớ tạm lưu lượt dùng (1 ngày/lần)
-user_cooldowns = {}
-
-# Server giữ bot luôn mở trên Render
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot Free Fire đang hoạt động 24/7!"
-
-def run_web():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
-
-def keep_alive():
-    Thread(target=run_web).start()
-
-# ----------------------------------------------------
-# 1. LỆNH /check <uid> (Check thông tin account FF)
-# ----------------------------------------------------
-@bot.message_handler(commands=['check'])
-def handle_check(message):
+# API Buff Like thật (Region VN & Quốc tế)
+def send_like_real(uid):
+    url = f"https://api-freefire-like.vercel.app/like?uid={uid}&region=vn"
     try:
-        args = message.text.split()
-        if len(args) < 2:
-            bot.reply_to(message, "❌ **Cú pháp sai!** Cú pháp đúng: `/check <UID>`", parse_mode="Markdown")
-            return
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except Exception:
+        return None
 
-        uid = args[1]
-        if not uid.isdigit():
-            bot.reply_to(message, "❌ **UID không hợp lệ!** UID phải là dãy số.", parse_mode="Markdown")
-            return
+# API Check Info & Ban thật
+def check_info_real(uid):
+    url = f"https://api-freefire-like.vercel.app/check?uid={uid}&region=vn"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except Exception:
+        return None
 
-        msg_wait = bot.reply_to(message, f"⏳ Đang kiểm tra UID `{uid}`...", parse_mode="Markdown")
+@bot.message_handler(commands=['start'])
+def handle_start(message):
+    welcome_text = (
+        "🤖 **BOT BUFF LIKE FREE FIRE OB55**\n\n"
+        "📌 **Các lệnh hiện có:**\n"
+        "• `/like <UID>` : Buff like cho tài khoản Free Fire\n"
+        "• `/check <UID>` : Kiểm tra thông tin & trạng thái Ban\n"
+    )
+    bot.reply_to(message, welcome_text, parse_mode="Markdown")
 
-        # Gọi API tra cứu thông tin
-        api_url = f"https://api.freefireinfo.site/check?uid={uid}"
-        try:
-            res = requests.get(api_url, timeout=10).json()
-            name = res.get("name", "N/A")
-            server = res.get("server", "VN")
-            level = res.get("level", "N/A")
-            likes = res.get("likes", "N/A")
-            bio = res.get("bio", "Không có tiểu sử")
-            status_str = "⛔ **Ban 7 days**" if res.get("is_banned") else "🟢 **An toàn (Safe)**"
-        except Exception:
-            name, server, level, likes, bio = "Khách", "VN", "40", "179", "acc Tik Tok nguyenduchauha"
-            status_str = "🟢 **An toàn (Safe)**"
-
-        user_req = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
-
-        caption = (
-            "CHECK BAN ACCOUNT FREE FIRE\n\n"
-            "Thông tin tài khoản\n"
-            f"• **Tên:** `{name}`\n"
-            f"• **UID:** `{uid}`\n"
-            f"• **Server:** `{server}`\n"
-            f"• **Level:** `{level}`\n"
-            f"• **Lượt thích:** `{likes}`\n"
-            "• **Prime:** `1`\n\n"
-            "Tiểu sử (Bio)\n"
-            f"```\n{bio}\n```\n"
-            "Thông tin hoạt động\n"
-            "• **Ngày tạo:** `734 days ago`\n"
-            "• **Online cuối:** `59 minutes ago`\n"
-            "• **Phiên bản OB:** `OB55`\n\n"
-            "Trạng thái\n"
-            f"{status_str}\n\n"
-            f"tiktok @amdtsmodz | Yêu cầu bởi {user_req}"
-        )
-        bot.edit_message_text(caption, chat_id=msg_wait.chat.id, message_id=msg_wait.message_id, parse_mode="Markdown")
-
-    except Exception as e:
-        bot.reply_to(message, f"❌ Lỗi hệ thống: {str(e)}")
-
-# ----------------------------------------------------
-# 2. LỆNH /like <uid> (Buff 200-400 Likes)
-# ----------------------------------------------------
 @bot.message_handler(commands=['like'])
 def handle_like(message):
-    try:
-        user_id = message.from_user.id
-        now = datetime.datetime.now()
-        is_admin = user_id in ADMIN_IDS
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, "❌ Cú pháp sai! Cú pháp đúng: `/like <UID>`", parse_mode="Markdown")
+        return
 
-        # Người dùng thường bị giới hạn 1 lần/ngày
-        if not is_admin:
-            if user_id in user_cooldowns:
-                if now - user_cooldowns[user_id] < datetime.timedelta(days=1):
-                    bot.reply_to(message, "⚠️ **Bạn đã hết lượt dùng hôm nay!** Quay lại sau 24h.", parse_mode="Markdown")
-                    return
-
-        args = message.text.split()
-        if len(args) < 2:
-            bot.reply_to(message, "❌ **Cú pháp sai!** Cú pháp đúng: `/like <UID>`", parse_mode="Markdown")
-            return
-
-        uid = args[1]
-        if not uid.isdigit():
-            bot.reply_to(message, "❌ UID không hợp lệ!", parse_mode="Markdown")
-            return
-
-        msg_wait = bot.reply_to(message, f"⏳ Đang buff like cho UID `{uid}`...", parse_mode="Markdown")
-
-        # Ngẫu nhiên lượt like từ 200 đến 400
-        likes_added = random.randint(200, 400)
+    uid = args[1]
+    bot.reply_to(message, f"⏳ Đang gửi request buff like cho UID `{uid}`...", parse_mode="Markdown")
+    
+    res = send_like_real(uid)
+    
+    if res and res.get('status') == 'success':
+        name = res.get('player_name', 'Không xác định')
+        before_likes = res.get('likes_before', 0)
+        after_likes = res.get('likes_after', 0)
+        added = res.get('likes_given', 0)
         
-        if send_like:
-            try:
-                send_like(uid)
-            except Exception:
-                pass
-
-        if not is_admin:
-            user_cooldowns[user_id] = now
-
-        user_req = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
-
-        if is_admin:
-            status_usage = "👑 **lượt còn lại:** `Vô hạn` (Quyền Admin)"
-        else:
-            status_usage = "🔴 **lượt còn lại:** `0/1` (Hôm nay đã dùng)"
-
-        caption = (
-            "BUFF LIKES FREE FIRE THÀNH CÔNG\n\n"
-            "Người dùng\n"
-            f"• **Người dùng:** {user_req}\n\n"
-            "Thông tin tài khoản\n"
-            f"• **Tên:** `mrghosthubvi`\n"
-            f"• **UID:** `{uid}`\n\n"
-            "Kết quả Likes\n"
-            f"• **Like đã gửi:** `+{likes_added}`\n"
-            f"• **Biến động Likes:** `262` ➡️ `{262 + likes_added}`\n\n"
-            "Trạng thái lượt dùng\n"
-            f"{status_usage}\n\n"
-            "tiktok @amdtsmodz"
+        msg = (
+            f"✅ **BUFF LIKES FREE FIRE THÀNH CÔNG**\n\n"
+            f"• **Tên:** {name}\n"
+            f"• **UID:** {uid}\n\n"
+            f"**Kết quả Likes:**\n"
+            f"• Like đã gửi: +{added}\n"
+            f"• Biến động Likes: {before_likes} ➡️ {after_likes}\n\n"
+            f"👑 **Lượt còn lại:** Vô hạn (Quyền Admin)"
         )
-        bot.edit_message_text(caption, chat_id=msg_wait.chat.id, message_id=msg_wait.message_id, parse_mode="Markdown")
+        bot.reply_to(message, msg, parse_mode="Markdown")
+    else:
+        bot.reply_to(message, "❌ **Lỗi:** Không thể buff like! UID không tồn tại, sai Region hoặc nick đang bị khóa/giới hạn trong ngày.", parse_mode="Markdown")
 
-    except Exception as e:
-        bot.reply_to(message, f"❌ Lỗi hệ thống: {str(e)}")
+@bot.message_handler(commands=['check'])
+def handle_check(message):
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, "❌ Cú pháp sai! Cú pháp đúng: `/check <UID>`", parse_mode="Markdown")
+        return
+
+    uid = args[1]
+    bot.reply_to(message, f"🔍 Đang kiểm tra thông tin UID `{uid}`...", parse_mode="Markdown")
+    
+    res = check_info_real(uid)
+    
+    if res and res.get('status') == 'success':
+        name = res.get('name', 'Khách')
+        level = res.get('level', 'N/A')
+        likes = res.get('likes', '0')
+        region = res.get('region', 'VN')
+        bio = res.get('bio', 'Không có')
+        is_banned = res.get('is_banned', False)
+        ban_status = "🔴 Đang bị BAN / Khóa nick" if is_banned else "🟢 An toàn (Safe)"
+
+        msg = (
+            f"🔍 **CHECK ACCOUNT FREE FIRE**\n\n"
+            f"**Thông tin tài khoản**\n"
+            f"• Tên: {name}\n"
+            f"• UID: {uid}\n"
+            f"• Server: {region}\n"
+            f"• Level: {level}\n"
+            f"• Lượt thích: {likes}\n\n"
+            f"**Tiểu sử (Bio):**\n`{bio}`\n\n"
+            f"**Trạng thái:**\n{ban_status}"
+        )
+        bot.reply_to(message, msg, parse_mode="Markdown")
+    else:
+        bot.reply_to(message, "❌ Không tìm thấy thông tin tài khoản hoặc UID chưa chính xác!", parse_mode="Markdown")
 
 if __name__ == "__main__":
-    keep_alive()
     bot.infinity_polling(skip_pending=True)
