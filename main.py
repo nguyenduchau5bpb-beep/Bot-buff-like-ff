@@ -28,8 +28,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("❌ LỖI: Chưa cài đặt biến môi trường BOT_TOKEN trên Render!")
 
-# Bật use_middleware=True để sửa lỗi Runtime: Middleware is not enabled
-bot = telebot.TeleBot(BOT_TOKEN, use_middleware=True)
+bot = telebot.TeleBot(BOT_TOKEN)
 
 ADMIN_ID = 8474356606  # ID Telegram Admin của bạn
 DATA_FILE = "users_data.json"
@@ -40,7 +39,26 @@ CRE_TEXT = "👑 **Developer:** mrghost\n🎵 **TikTok:** @mrghost1238"
 
 file_lock = threading.Lock()
 
-# Danh sách API dự phòng
+# ================= CƠ CHẾ CHỐNG SPAM (COOLDOWN 5 GIÂY) =================
+user_cooldowns = {}
+COOLDOWN_TIME = 5  # Giới hạn 5 giây 1 tin nhắn
+
+def check_cooldown(user_id):
+    """Kiểm tra xem user có bị giới hạn 5s không. Admin được bỏ qua."""
+    if int(user_id) == int(ADMIN_ID):
+        return True, 0
+    
+    current_time = time.time()
+    last_time = user_cooldowns.get(user_id, 0)
+    
+    if current_time - last_time < COOLDOWN_TIME:
+        wait_time = int(COOLDOWN_TIME - (current_time - last_time))
+        return False, wait_time
+    
+    user_cooldowns[user_id] = current_time
+    return True, 0
+
+# ================= DANH SÁCH API =================
 LIKE_APIS = [
     "https://free-fire-like-api.vercel.app/like?uid={uid}&region={region}",
     "https://api-freefire-like.vercel.app/like?uid={uid}&region={region}",
@@ -55,7 +73,7 @@ CHECK_APIS = [
 
 REGIONS = ["vn", "sg", "ind", "br", "th", "me", "id", "us"]
 
-# ================= QUẢN LÝ DỮ LIỆU JSON & TỰ ĐỘNG PUSH GITHUB =================
+# ================= QUẢN LÝ DỮ LIỆU JSON & GITHUB PUSH =================
 def load_json(filepath):
     if os.path.exists(filepath):
         try:
@@ -67,7 +85,6 @@ def load_json(filepath):
     return {}
 
 def push_to_github(filepath):
-    """Tự động Commit & Push file JSON lên GitHub để Render không làm mất dữ liệu khi restart"""
     try:
         subprocess.run(["git", "config", "user.name", "Auto Bot"], check=True)
         subprocess.run(["git", "config", "user.email", "bot@render.com"], check=True)
@@ -153,17 +170,12 @@ def get_user_data(user_id):
     check_vip_status(user_id, data)
     return data[uid_str]
 
-# Middleware tự động ghi nhận User
-@bot.middleware_handler(update_types=['message'])
-def record_user_middleware(bot_instance, message):
-    if message.from_user:
-        get_user_data(message.from_user.id)
-
 # ================= MENU LỆNH BOT =================
 try:
     bot.set_my_commands([
         BotCommand("start", "Khởi động & Trang chủ"),
         BotCommand("menu", "Menu giao diện nút bấm 🎮"),
+        BotCommand("admin", "Menu Quản Trị Viên (Admin) 👑"),
         BotCommand("like", "Buff like Free Fire (/like <UID>)"),
         BotCommand("check", "Kiểm tra chi tiết acc Free Fire (/check <UID>)"),
         BotCommand("wheel", "Vòng quay may mắn nhận lượt 🎡"),
@@ -241,6 +253,13 @@ def build_main_menu():
 @bot.message_handler(commands=['start', 'menu'])
 def handle_start(message):
     user_id = message.from_user.id
+    
+    # Kiểm tra Spam 5s
+    can_run, wait_sec = check_cooldown(user_id)
+    if not can_run:
+        bot.reply_to(message, f"⏱️ **Vui lòng đợi {wait_sec} giây nữa để gửi lệnh tiếp theo!** (Chống spam)", parse_mode="Markdown")
+        return
+
     u_data = get_user_data(user_id)
     is_vip = check_vip_status(user_id)
     
@@ -254,7 +273,7 @@ def handle_start(message):
                 data[str(ref_id)]["ref_count"] = data[str(ref_id)].get("ref_count", 0) + 1
             save_json(DATA_FILE, data)
 
-    role_txt = "👑 Admin VIP" if user_id == ADMIN_ID else ("🌟 VIP Member" if is_vip else "👤 Thành Viên")
+    role_txt = "👑 **FOUNDER & ADMIN SYSTEM**" if user_id == ADMIN_ID else ("🌟 VIP Member" if is_vip else "👤 Thành Viên")
 
     welcome_text = (
         f"🤖 **BOT BUFF LIKE & CHECK INFO FREE FIRE 24/7**\n\n"
@@ -267,14 +286,51 @@ def handle_start(message):
     )
     bot.reply_to(message, welcome_text, reply_markup=build_main_menu(), parse_mode="Markdown")
 
+@bot.message_handler(commands=['admin', 'adminmenu', 'menuadmin'])
+def handle_admin_menu(message):
+    if int(message.from_user.id) != int(ADMIN_ID):
+        bot.reply_to(message, "❌ **Bạn không có quyền truy cập Menu Admin!**", parse_mode="Markdown")
+        return
+
+    users = load_json(DATA_FILE)
+    vip_count = sum(1 for u in users.values() if u.get("is_vip", False))
+    
+    admin_txt = (
+        f"⚡ **BẢNG QUẢN TRỊ ADMIN SYSTEM** ⚡\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 **Thống kê hệ thống:**\n"
+        f"• **Tổng người dùng:** `{len(users)}` người\n"
+        f"• **Thành viên VIP:** `{vip_count}` VIP\n\n"
+        f"⚙️ **DANH SÁCH LỆNH BẢO TRÌ & QUẢN LÝ:**\n\n"
+        f"1️⃣ **Cấp hạn VIP:**\n"
+        f"👉 `/setvip <ID_Telegram> <Số_Ngày>` (VD: `/setvip 123456 30` hoặc `9999` vĩnh viễn)\n\n"
+        f"2️⃣ **Cộng lượt Buff:**\n"
+        f"👉 `/addspin <ID_Telegram> <Số_Lượt>`\n\n"
+        f"3️⃣ **Tạo Mã Giftcode:**\n"
+        f"👉 `/addcode <Mã> vip <Số_Ngày>`\n"
+        f"👉 `/addcode <Mã> spins <Số_Lượt>`\n\n"
+        f"4️⃣ **Gửi thông báo toàn hệ thống (Broadcast):**\n"
+        f"👉 `/sendall <Nội dung thông báo>`\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{CRE_TEXT}"
+    )
+    bot.reply_to(message, admin_txt, parse_mode="Markdown")
+
 @bot.message_handler(commands=['like'])
 def handle_like(message):
+    user_id = message.from_user.id
+    
+    # Kiểm tra Spam 5s
+    can_run, wait_sec = check_cooldown(user_id)
+    if not can_run:
+        bot.reply_to(message, f"⏱️ **Vui lòng đợi {wait_sec} giây nữa để thao tác tiếp!**", parse_mode="Markdown")
+        return
+
     config = get_config()
-    if config.get("maintenance", False) and message.from_user.id != ADMIN_ID:
+    if config.get("maintenance", False) and user_id != ADMIN_ID:
         bot.reply_to(message, "🛠️ **HỆ THỐNG ĐANG BẢO TRÌ!**\nVui lòng quay lại sau.", parse_mode="Markdown")
         return
 
-    user_id = message.from_user.id
     u_data = get_user_data(user_id)
     is_vip = check_vip_status(user_id)
     daily_limit = 99999 if user_id == ADMIN_ID else (6 if is_vip else 3)
@@ -338,6 +394,13 @@ def handle_like(message):
 
 @bot.message_handler(commands=['check'])
 def handle_check(message):
+    user_id = message.from_user.id
+    
+    can_run, wait_sec = check_cooldown(user_id)
+    if not can_run:
+        bot.reply_to(message, f"⏱️ **Vui lòng đợi {wait_sec} giây nữa để thao tác tiếp!**", parse_mode="Markdown")
+        return
+
     args = message.text.split()
     if len(args) < 2:
         bot.reply_to(message, "❌ **Sai cú pháp!** Vui lòng nhập: `/check <UID>`", parse_mode="Markdown")
@@ -376,6 +439,13 @@ def handle_check(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('btn_'))
 def handle_menu_callbacks(call):
     cmd = call.data
+    user_id = call.from_user.id
+    
+    can_run, wait_sec = check_cooldown(user_id)
+    if not can_run:
+        bot.answer_callback_query(call.id, f"⏱️ Thao tác quá nhanh! Chờ {wait_sec}s.", show_alert=True)
+        return
+
     if cmd == "btn_like_guide":
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, "👉 Cú pháp buff: `/like <UID>`", parse_mode="Markdown")
@@ -454,17 +524,32 @@ def handle_diemdanh(message):
 def handle_profile(message):
     user_id = message.from_user.id
     u_data = get_user_data(user_id)
-    is_vip = check_vip_status(user_id)
-    exp_txt = "Vĩnh viễn ♾️" if u_data.get("vip_expire") == "PERMANENT" else u_data.get("vip_expire", "Chưa có")
-    profile_txt = (
-        f"👤 **THÔNG TIN TÀI KHOẢN**\n\n"
-        f"• **ID Telegram:** `{user_id}`\n"
-        f"• **Cấp VIP:** {'Có 🌟' if is_vip else 'Không ❌'}\n"
-        f"• **Hạn VIP:** {exp_txt}\n"
-        f"• **Lượt buff dư:** `{u_data['spins']}`\n"
-        f"• **Đã dùng hôm nay:** `{u_data['daily_used']}`\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n{CRE_TEXT}"
-    )
+    
+    if user_id == ADMIN_ID:
+        profile_txt = (
+            f"👑 **HỒ SƠ QUẢN TRỊ VIÊN SUPREME** 👑\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **Chủ Sở Hữu:** {message.from_user.first_name}\n"
+            f"🆔 **ID Telegram:** `{user_id}`\n"
+            f"🔥 **Cấp Bậc:** System Founder / Admin Core\n"
+            f"♾️ **Quyền Hạn:** Không Giới Hạn (Unlimited)\n"
+            f"🚀 **Quyền Buff:** Vô hạn lượt buff 24/7\n"
+            f"🛠️ **Menu Quản Trị:** Gõ `/admin` để mở Bảng điều khiển\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{CRE_TEXT}"
+        )
+    else:
+        is_vip = check_vip_status(user_id)
+        exp_txt = "Vĩnh viễn ♾️" if u_data.get("vip_expire") == "PERMANENT" else u_data.get("vip_expire", "Chưa có")
+        profile_txt = (
+            f"👤 **THÔNG TIN TÀI KHOẢN**\n\n"
+            f"• **ID Telegram:** `{user_id}`\n"
+            f"• **Cấp VIP:** {'Có 🌟' if is_vip else 'Không ❌'}\n"
+            f"• **Hạn VIP:** {exp_txt}\n"
+            f"• **Lượt buff dư:** `{u_data['spins']}`\n"
+            f"• **Đã dùng hôm nay:** `{u_data['daily_used']}`\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n{CRE_TEXT}"
+        )
     bot.reply_to(message, profile_txt, parse_mode="Markdown")
 
 @bot.message_handler(commands=['buyvip'])
