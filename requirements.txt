@@ -1,7 +1,7 @@
+Flask
+Flask-Cors
 requests
 python-telegram-bot
-Flask
 waitress
-aiohttp
-python-dotenv
-
+protobuf>=4.23.0
+pycryptodome>=3.18.0
