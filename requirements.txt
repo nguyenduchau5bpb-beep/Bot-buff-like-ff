@@ -1,6 +1,7 @@
-python-telegram-bot>=20.0
-python-dotenv>=1.0.0
-Flask>=2.3.2
-aiohttp>=3.8.4
-waitress>=2.1.2
- 
+requests
+python-telegram-bot
+Flask
+waitress
+aiohttp
+python-dotenv
+
