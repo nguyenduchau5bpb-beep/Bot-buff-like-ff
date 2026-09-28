@@ -5,12 +5,12 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# --- TẠO WEB SERVER ĐỂ RENDER THỎA MẢN ĐIỀU KIỆN PORT SCAN ---
+# Web Server phụ giúp Render quét cổng PORT thành công
 app_web = Flask(__name__)
 
 @app_web.route('/')
 def home():
-    return "Bot Telegram đang hoạt động 24/7!", 200
+    return "Bot Telegram đang hoạt động!", 200
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -19,7 +19,8 @@ def run_web():
 # -----------------------------------------------------------
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-API_BASE_URL = "https://ghost.onrender.com/get_player_personal_show"
+# Cập nhật chính xác URL domain API thực tế
+API_BASE_URL = "https://freefire-api-mrghost.onrender.com/get_player_personal_show"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -39,7 +40,6 @@ async def check_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🔍 Đang tra cứu thông tin UID: {uid}...")
 
     try:
-        # Gọi sang API Server ghost.onrender.com
         response = requests.get(f"{API_BASE_URL}?uid={uid}&server=VN", timeout=15)
         
         if response.status_code == 200:
@@ -66,10 +66,10 @@ def main():
         print("❌ Lỗi: Chưa cấu hình TELEGRAM_TOKEN trong Environment Variables!")
         return
 
-    # Khởi chạy Web Server lắng nghe cổng PORT
+    # Chạy Web Server phụ trên luồng riêng
     threading.Thread(target=run_web, daemon=True).start()
 
-    # Khởi chạy Bot Telegram
+    # Chạy Bot Telegram
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("check", check_info))
