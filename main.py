@@ -1,12 +1,24 @@
 import os
+import threading
 import requests
+from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Lấy Token từ Environment Variables trên Render
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+# --- TẠO WEB SERVER ĐỂ RENDER THỎA MẢN ĐIỀU KIỆN PORT SCAN ---
+app_web = Flask(__name__)
 
-# Endpoint API thực tế trên ghost.onrender.com
+@app_web.route('/')
+def home():
+    return "Bot Telegram đang hoạt động 24/7!", 200
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app_web.run(host='0.0.0.0', port=port)
+
+# -----------------------------------------------------------
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 API_BASE_URL = "https://ghost.onrender.com/get_player_personal_show"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -16,7 +28,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def check_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("❌ Vui lòng nhập UID! Ví dụ: `/check 123456789`")
+        await update.message.reply_text("❌ Vui lòng nhập UID! Ví dụ: `/check 123456789` ")
         return
 
     uid = context.args[0]
@@ -27,12 +39,11 @@ async def check_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🔍 Đang tra cứu thông tin UID: {uid}...")
 
     try:
-        # Gọi chính xác endpoint API
+        # Gọi sang API Server ghost.onrender.com
         response = requests.get(f"{API_BASE_URL}?uid={uid}&server=VN", timeout=15)
         
         if response.status_code == 200:
             data = response.json()
-            # Tự điều chỉnh các trường thông tin hiển thị theo cấu trúc trả về từ API của bạn
             account_name = data.get("AccountInfo", {}).get("AccountName", "Không rõ")
             level = data.get("AccountInfo", {}).get("Level", "N/A")
             likes = data.get("AccountInfo", {}).get("Likes", "N/A")
@@ -55,6 +66,10 @@ def main():
         print("❌ Lỗi: Chưa cấu hình TELEGRAM_TOKEN trong Environment Variables!")
         return
 
+    # Khởi chạy Web Server lắng nghe cổng PORT
+    threading.Thread(target=run_web, daemon=True).start()
+
+    # Khởi chạy Bot Telegram
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("check", check_info))
